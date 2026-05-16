@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────
-# FILE: app.py (UPDATED: No PNG Export + Table Ranking)
+# FILE: app.py (UPDATED: Table Ranking + No PNG Export)
 # DEPENDENCIES: streamlit, pandas, numpy, plotly, requests, openpyxl
 # INSTALL: pip install streamlit pandas numpy plotly requests openpyxl
 # RUN: streamlit run app.py
@@ -59,7 +59,6 @@ def get_filtered_cols(df, selected_freqs, q_cols, y_cols):
     return cols, label_str
 
 def calculate_growth_data(df, cols, selected_sectors):
-    """Hitung growth periode terakhir vs sebelumnya untuk semua sektor terpilih"""
     growth_data = []
     for sek in selected_sectors:
         data = df.loc[df["Sektor"] == sek, cols].values.flatten()
@@ -73,7 +72,7 @@ def calculate_growth_data(df, cols, selected_sectors):
             "Nilai_Terkini_M": data[-1],
             "Avg_Growth_%": g_series.mean(), 
             "Volatility_σ": g_series.std(),
-            "Nilai_Awal_M": data[-2]  # Untuk tabel perubahan
+            "Nilai_Awal_M": data[-2]
         })
     return pd.DataFrame(growth_data).sort_values("Growth_Terkini_%", ascending=False)
 
@@ -107,23 +106,23 @@ with st.sidebar:
         st.stop()
     
     # 🏷️ Multi-Select Sektor
-    selected_sectors = st.multiselect(
-        "🏷️ Pilih Sektor", 
-        sektor_list, 
-        default=[sektor_list[0], sektor_list[1] if len(sektor_list)>1 else sektor_list[0]]
-    )
+    selected_sectors = st.multiselect("🏷️ Pilih Sektor", sektor_list, 
+                                      default=[sektor_list[0], sektor_list[1] if len(sektor_list)>1 else sektor_list[0]])
     
     # 👁️ Jenis Visualisasi
     viz_type = st.selectbox("👁️ Jenis Visualisasi", [
-        "📈 Tren Nilai", 
-        "🏆 Perubahan Terbesar (17)", 
-        "🔥 Volatilitas", 
-        "📊 Komparasi Q1-Q4", 
-        "🔍 Deteksi Anomali"
+        "📈 Tren Nilai", "🏆 Perubahan Terbesar (17)", "🔥 Volatilitas", 
+        "📊 Komparasi Q1-Q4", "🔍 Deteksi Anomali"
     ])
     
-    # 🎚️ Threshold untuk deteksi anomali
+    # 🎚️ Threshold
     threshold = st.slider("🎯 Threshold (%)", 1.0, 20.0, 5.0)
+    
+    # 📐 PENGATURAN TINGGI & LEBAR GRAFIK (DIPERTAHANKAN)
+    st.divider()
+    st.subheader("📐 Pengaturan Visual")
+    chart_height = st.slider("📏 Tinggi Grafik (pixel)", min_value=300, max_value=1200, value=600, step=50)
+    chart_width = st.slider("📐 Lebar Grafik (pixel)", min_value=600, max_value=2000, value=1200, step=100)
 
 # ─────────────────────────────────────────────────────────────────────
 # 4. PROSES DATA & VISUALISASI
@@ -131,15 +130,8 @@ with st.sidebar:
 cols, freq_label = get_filtered_cols(df, selected_freqs, q_cols, y_cols)
 df_growth = calculate_growth_data(df, cols, selected_sectors)
 
-tabs = st.tabs([
-    "📊 Visualisasi", 
-    "📋 Tabel Ranking Perubahan",  # ✅ TAB BARU: TABEL RANKING
-    "📥 Export Data"
-])
+tabs = st.tabs(["📊 Visualisasi", "📋 Tabel Perubahan", "📥 Export Data"])
 
-# ─────────────────────────────────────────────────────────────────────
-# TAB 1: VISUALISASI
-# ─────────────────────────────────────────────────────────────────────
 with tabs[0]:
     st.subheader(f"📈 Analisis: {viz_type} ({freq_label})")
     
@@ -149,6 +141,7 @@ with tabs[0]:
         if df_top17.empty:
             st.warning("⚠️ Tidak cukup data untuk 17 sektor.")
         else:
+            # 📊 CHART BAR HORIZONTAL
             fig = go.Figure()
             fig.add_trace(go.Bar(
                 y=df_top17["Sektor"].apply(lambda x: x[:45]+"..." if len(x)>45 else x),
@@ -162,22 +155,64 @@ with tabs[0]:
                 title=f"🏆 Ranking 17 Sektor: Perubahan Terbesar - {freq_label}",
                 xaxis_title="Pertumbuhan Periode Terakhir (%)",
                 yaxis=dict(autorange="reversed", title="Sektor"),
-                template="plotly_white", height=650,
-                margin=dict(l=320, r=20, t=50, b=20), bargap=0.4, showlegend=False
+                template="plotly_white", 
+                height=chart_height,
+                width=chart_width,
+                margin=dict(l=320, r=20, t=50, b=20), 
+                bargap=0.4, 
+                showlegend=False
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=False)
             
-            # Statistik format pohon (tetap dipertahankan)
-            st.markdown("### 📊 Ringkasan Statistik")
+            # 📋 TABEL RANKING 17 SEKTOR (FITUR BARU)
+            st.markdown("### 📋 Tabel Ranking 17 Sektor - Perubahan Terbesar & Terkecil")
+            
+            # Siapkan data tabel dengan formatting
+            df_table = df_top17.copy()
+            df_table["Rank"] = range(1, len(df_table)+1)
+            df_table["Tren"] = df_table["Growth_Terkini_%"].apply(lambda x: "📈 Naik" if x >= 0 else "📉 Turun")
+            df_table["Perubahan_Absolut_M"] = df_table["Nilai_Terkini_M"] - df_table["Nilai_Awal_M"]
+            
+            # Format kolom untuk display
+            df_display = df_table[[
+                "Rank", "Sektor", "Tren", "Growth_Terkini_%", 
+                "Nilai_Awal_M", "Nilai_Terkini_M", "Perubahan_Absolut_M",
+                "Avg_Growth_%", "Volatility_σ"
+            ]].copy()
+            
+            # Formatting angka
+            df_display["Growth_Terkini_%"] = df_display["Growth_Terkini_%"].apply(lambda x: f"{x:+.2f}%")
+            df_display["Nilai_Awal_M"] = df_display["Nilai_Awal_M"].apply(lambda x: f"{x:,.0f}")
+            df_display["Nilai_Terkini_M"] = df_display["Nilai_Terkini_M"].apply(lambda x: f"{x:,.0f}")
+            df_display["Perubahan_Absolut_M"] = df_display["Perubahan_Absolut_M"].apply(lambda x: f"{x:+,.0f}")
+            df_display["Avg_Growth_%"] = df_display["Avg_Growth_%"].apply(lambda x: f"{x:+.2f}%")
+            df_display["Volatility_σ"] = df_display["Volatility_σ"].apply(lambda x: f"{x:.2f}%")
+            
+            # Rename kolom untuk display yang lebih jelas
+            df_display.columns = [
+                "🔢", "🏷️ Sektor", "📊 Tren", "📈 Growth (%)", 
+                "💰 Nilai Awal (M)", "💰 Nilai Akhir (M)", "🔄 Δ Absolut (M)",
+                "📊 Avg Growth", "⚡ Volatilitas"
+            ]
+            
+            # Tampilkan tabel dengan styling
+            st.dataframe(
+                df_display,
+                use_container_width=True,
+                height=500,
+                hide_index=True
+            )
+            
+            # 📜 STATISTIK FORMAT POHON (DIPERTAHANKAN)
+            st.markdown("### 📊 Ringkasan Statistik Detail")
             for _, row in df_top17.iterrows():
                 tren = "📈 Ekspansi" if row["Growth_Terkini_%"] >= 0 else "📉 Kontraksi"
-                st.text(f"🏷️  {row['Sektor'][:50]}{'...' if len(row['Sektor'])>50 else ''}")
-                st.text(f"   ├─ Nilai Terkini: Rp {row['Nilai_Terkini_M']:,.0f} M")
-                st.text(f"   ├─ Growth Terbaru: {row['Growth_Terkini_%']:+.2f}%")
-                st.text(f"   ├─ Rata-rata Growth: {row['Avg_Growth_%']:+.2f}%")
-                st.text(f"   ├─ Volatilitas (σ): {row['Volatility_σ']:.2f}%")
-                st.text(f"   └─ Tren: {tren}")
-                st.markdown("---")
+                with st.expander(f"🏷️ {row['Sektor'][:50]}{'...' if len(row['Sektor'])>50 else ''}"):
+                    st.text(f"   ├─ Nilai Terkini: Rp {row['Nilai_Terkini_M']:,.0f} M")
+                    st.text(f"   ├─ Growth Terbaru: {row['Growth_Terkini_%']:+.2f}%")
+                    st.text(f"   ├─ Rata-rata Growth: {row['Avg_Growth_%']:+.2f}%")
+                    st.text(f"   ├─ Volatilitas (σ): {row['Volatility_σ']:.2f}%")
+                    st.text(f"   └─ Tren: {tren}")
 
     # ─── VISUALISASI: TREN NILAI ────────────────────────────────────
     elif viz_type == "📈 Tren Nilai":
@@ -193,9 +228,13 @@ with tabs[0]:
             title=f"📈 Tren Nilai - {freq_label}", 
             xaxis_title="Periode", 
             yaxis_title="Nilai (Miliar Rupiah)",
-            template="plotly_white", height=500, hovermode="x unified", xaxis_tickangle=-45
+            template="plotly_white", 
+            height=chart_height,
+            width=chart_width,
+            hovermode="x unified", 
+            xaxis_tickangle=-45
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=False)
 
     # ─── VISUALISASI: VOLATILITAS ───────────────────────────────────
     elif viz_type == "🔥 Volatilitas":
@@ -203,8 +242,12 @@ with tabs[0]:
         fig = px.bar(vol_data, x="Volatility_σ", y="Sektor", orientation='h',
                      title=f"🔥 15 Sektor Paling Volatil - {freq_label}", 
                      color="Volatility_σ", color_continuous_scale="RdYlGn_r")
-        fig.update_layout(height=600, yaxis={'categoryorder':'total ascending'})
-        st.plotly_chart(fig, use_container_width=True)
+        fig.update_layout(
+            height=chart_height,
+            width=chart_width,
+            yaxis={'categoryorder':'total ascending'}
+        )
+        st.plotly_chart(fig, use_container_width=False)
 
     # ─── VISUALISASI: KOMPARASI Q1-Q4 ───────────────────────────────
     elif viz_type == "📊 Komparasi Q1-Q4":
@@ -226,8 +269,13 @@ with tabs[0]:
                              title=f"📊 Komparasi Nilai per Kuartal - Tahun {latest_year}",
                              labels={"Nilai_M": "Nilai (Miliar Rupiah)", "Sektor": "Sektor"},
                              color_discrete_sequence=px.colors.qualitative.Set2)
-                fig.update_layout(height=550, xaxis_tickangle=-45, template="plotly_white")
-                st.plotly_chart(fig, use_container_width=True)
+                fig.update_layout(
+                    height=chart_height,
+                    width=chart_width,
+                    xaxis_tickangle=-45, 
+                    template="plotly_white"
+                )
+                st.plotly_chart(fig, use_container_width=False)
             else:
                 st.warning("⚠️ Data tidak tersedia untuk komparasi.")
 
@@ -242,117 +290,66 @@ with tabs[0]:
             anomalies = np.where(z_scores > 2)[0]
             status = "✅ Stabil" if len(anomalies) == 0 else f"⚠️ {len(anomalies)} anomali"
             st.markdown(f"**{sek[:50]}**: {status}")
+        
+        if selected_sectors:
+            sek = selected_sectors[0]
+            data = df.loc[df["Sektor"] == sek, cols].values.flatten()
+            data = data[~np.isnan(data)]
+            periods = [str(c) for c in cols][:len(data)]
+            
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=periods, y=data, mode="lines+markers", name="Nilai"))
+            if len(data) >= 10:
+                z = np.abs((data - np.mean(data)) / np.std(data))
+                anom_idx = np.where(z > 2)[0]
+                if len(anom_idx) > 0:
+                    fig.add_trace(go.Scatter(
+                        x=[periods[i] for i in anom_idx], 
+                        y=[data[i] for i in anom_idx],
+                        mode="markers", 
+                        name="⚠️ Anomali",
+                        marker=dict(color="red", size=10, symbol="x")
+                    ))
+            fig.update_layout(
+                title=f"🔍 Deteksi Anomali - {sek[:40]}",
+                height=chart_height,
+                width=chart_width,
+                template="plotly_white"
+            )
+            st.plotly_chart(fig, use_container_width=False)
 
-# ─────────────────────────────────────────────────────────────────────
-# TAB 2: TABEL RANKING PERUBAHAN TERBESAR & TERKECIL ✅ FITUR BARU
-# ─────────────────────────────────────────────────────────────────────
 with tabs[1]:
-    st.subheader(f"📋 Tabel Ranking: Perubahan Terbesar & Terkecil ({freq_label})")
-    
-    if df_growth.empty:
-        st.warning("⚠️ Tidak ada data pertumbuhan yang dapat ditampilkan.")
+    st.subheader("📋 Tabel Perubahan Kuartalan/Tahunan")
+    change_rows = []
+    for sek in selected_sectors:
+        data = df.loc[df["Sektor"] == sek, cols].values.flatten()
+        data = data[~np.isnan(data)]
+        periods = [str(c) for c in cols]
+        for i in range(1, len(data)):
+            change_rows.append({
+                "Sektor": sek, "Periode_Dari": periods[i-1], "Periode_Ke": periods[i],
+                "Nilai_Awal_M": data[i-1], "Nilai_Akhir_M": data[i],
+                "Perubahan_%": ((data[i]-data[i-1])/data[i-1]*100) if data[i-1] != 0 else 0
+            })
+    df_changes = pd.DataFrame(change_rows)
+    if not df_changes.empty:
+        df_display = df_changes[["Sektor", "Periode_Dari", "Periode_Ke", "Nilai_Awal_M", "Nilai_Akhir_M", "Perubahan_%"]].copy()
+        df_display["Perubahan_%"] = df_display["Perubahan_%"].apply(lambda x: f"{x:+.2f}%")
+        st.dataframe(df_display, use_container_width=True, height=500)
     else:
-        # ─── FILTER: TAMPILKAN 17 TERBESAR + 17 TERKECIL ─────────────
-        df_sorted = df_growth.sort_values("Growth_Terkini_%", ascending=False)
-        top_17 = df_sorted.head(17).copy()
-        bottom_17 = df_sorted.tail(17).copy()
-        
-        # Gabungkan: terbesar di atas, terkecil di bawah
-        df_ranking = pd.concat([top_17, bottom_17]).drop_duplicates()
-        
-        # ─── TABEL INTERAKTIF DENGAN SORTING & SEARCH ────────────────
-        st.markdown("### 🔝 17 Sektor dengan Pertumbuhan Terbesar")
-        top_display = top_17[["Sektor", "Growth_Terkini_%", "Nilai_Awal_M", "Nilai_Terkini_M", "Avg_Growth_%", "Volatility_σ"]].copy()
-        top_display["Growth_Terkini_%"] = top_display["Growth_Terkini_%"].apply(lambda x: f"{x:+.2f}%")
-        top_display["Avg_Growth_%"] = top_display["Avg_Growth_%"].apply(lambda x: f"{x:+.2f}%")
-        top_display["Nilai_Awal_M"] = top_display["Nilai_Awal_M"].apply(lambda x: f"{x:,.0f}")
-        top_display["Nilai_Terkini_M"] = top_display["Nilai_Terkini_M"].apply(lambda x: f"{x:,.0f}")
-        top_display["Volatility_σ"] = top_display["Volatility_σ"].apply(lambda x: f"{x:.2f}%")
-        top_display.columns = ["Sektor", "Growth Terbaru", "Nilai Awal (M)", "Nilai Akhir (M)", "Rata-rata Growth", "Volatilitas (σ)"]
-        st.dataframe(top_display.style.format(precision=2).background_gradient(subset=["Growth Terbaru"], cmap="Greens"), use_container_width=True, height=400)
-        
-        st.markdown("### 🔻 17 Sektor dengan Pertumbuhan Terkecil")
-        bottom_display = bottom_17[["Sektor", "Growth_Terkini_%", "Nilai_Awal_M", "Nilai_Terkini_M", "Avg_Growth_%", "Volatility_σ"]].copy()
-        bottom_display["Growth_Terkini_%"] = bottom_display["Growth_Terkini_%"].apply(lambda x: f"{x:+.2f}%")
-        bottom_display["Avg_Growth_%"] = bottom_display["Avg_Growth_%"].apply(lambda x: f"{x:+.2f}%")
-        bottom_display["Nilai_Awal_M"] = bottom_display["Nilai_Awal_M"].apply(lambda x: f"{x:,.0f}")
-        bottom_display["Nilai_Terkini_M"] = bottom_display["Nilai_Terkini_M"].apply(lambda x: f"{x:,.0f}")
-        bottom_display["Volatility_σ"] = bottom_display["Volatility_σ"].apply(lambda x: f"{x:.2f}%")
-        bottom_display.columns = ["Sektor", "Growth Terbaru", "Nilai Awal (M)", "Nilai Akhir (M)", "Rata-rata Growth", "Volatilitas (σ)"]
-        st.dataframe(bottom_display.style.format(precision=2).background_gradient(subset=["Growth Terbaru"], cmap="Reds"), use_container_width=True, height=400)
-        
-        # ─── STATISTIK FORMAT POHON (UNTUK TOP 5 & BOTTOM 5) ─────────
-        st.markdown("### 📊 Ringkasan Format Pohon (Top 5 & Bottom 5)")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("🔝 **Top 5 Pertumbuhan Terbesar**")
-            for _, row in top_17.head(5).iterrows():
-                tren = "📈 Ekspansi" if row["Growth_Terkini_%"] >= 0 else "📉 Kontraksi"
-                st.text(f"🏷️  {row['Sektor'][:40]}{'...' if len(row['Sektor'])>40 else ''}")
-                st.text(f"   ├─ Nilai Terkini: Rp {row['Nilai_Terkini_M']:,.0f} M")
-                st.text(f"   ├─ Growth Terbaru: {row['Growth_Terkini_%']:+.2f}%")
-                st.text(f"   ├─ Rata-rata Growth: {row['Avg_Growth_%']:+.2f}%")
-                st.text(f"   ├─ Volatilitas (σ): {row['Volatility_σ']:.2f}%")
-                st.text(f"   └─ Tren: {tren}")
-                st.markdown("---")
-        
-        with col2:
-            st.markdown("🔻 **Top 5 Pertumbuhan Terkecil**")
-            for _, row in bottom_17.head(5).iterrows():
-                tren = "📈 Ekspansi" if row["Growth_Terkini_%"] >= 0 else "📉 Kontraksi"
-                st.text(f"🏷️  {row['Sektor'][:40]}{'...' if len(row['Sektor'])>40 else ''}")
-                st.text(f"   ├─ Nilai Terkini: Rp {row['Nilai_Terkini_M']:,.0f} M")
-                st.text(f"   ├─ Growth Terbaru: {row['Growth_Terkini_%']:+.2f}%")
-                st.text(f"   ├─ Rata-rata Growth: {row['Avg_Growth_%']:+.2f}%")
-                st.text(f"   ├─ Volatilitas (σ): {row['Volatility_σ']:.2f}%")
-                st.text(f"   └─ Tren: {tren}")
-                st.markdown("---")
-        
-        # ─── TABEL LENGKAP SEMUA SEKTOR (DENGAN SEARCH) ──────────────
-        with st.expander("🔍 Lihat Tabel Lengkap Semua Sektor Terpilih"):
-            all_display = df_growth[["Sektor", "Growth_Terkini_%", "Nilai_Awal_M", "Nilai_Terkini_M", "Avg_Growth_%", "Volatility_σ"]].copy()
-            all_display["Growth_Terkini_%"] = all_display["Growth_Terkini_%"].apply(lambda x: f"{x:+.2f}%")
-            all_display["Avg_Growth_%"] = all_display["Avg_Growth_%"].apply(lambda x: f"{x:+.2f}%")
-            all_display["Nilai_Awal_M"] = all_display["Nilai_Awal_M"].apply(lambda x: f"{x:,.0f}")
-            all_display["Nilai_Terkini_M"] = all_display["Nilai_Terkini_M"].apply(lambda x: f"{x:,.0f}")
-            all_display["Volatility_σ"] = all_display["Volatility_σ"].apply(lambda x: f"{x:.2f}%")
-            all_display.columns = ["Sektor", "Growth Terbaru", "Nilai Awal (M)", "Nilai Akhir (M)", "Rata-rata Growth", "Volatilitas (σ)"]
-            st.dataframe(all_display.style.format(precision=2), use_container_width=True, height=500)
+        st.info("Pilih minimal 1 sektor dengan data lengkap.")
 
-# ─────────────────────────────────────────────────────────────────────
-# TAB 3: EXPORT DATA CSV
-# ─────────────────────────────────────────────────────────────────────
 with tabs[2]:
-    st.subheader("📥 Export Data ke CSV")
-    
-    col1, col2, col3 = st.columns(3)
-    
+    st.subheader("📥 Export Data")
+    col1, col2 = st.columns(2)
     with col1:
-        st.download_button(
-            "📊 Download Data Terpilih (CSV)", 
-            data=df.loc[df["Sektor"].isin(selected_sectors), ["Sektor"]+cols].to_csv(index=False).encode('utf-8'),
-            file_name=f"PDB_{freq_label.replace(' + ', '_').replace(' ', '_')}_Export.csv", 
-            mime="text/csv"
-        )
-    
+        st.download_button("📊 Download Data Terpilih (CSV)", 
+                           data=df.loc[df["Sektor"].isin(selected_sectors), ["Sektor"]+cols].to_csv(index=False).encode('utf-8'),
+                           file_name=f"PDB_{freq_label.replace(' + ', '_').replace(' ', '_')}_Export.csv", mime="text/csv")
     with col2:
-        st.download_button(
-            "📈 Download Ranking 17 (CSV)", 
-            data=df_growth.head(17).to_csv(index=False).encode('utf-8'),
-            file_name=f"Ranking_17_{freq_label.replace(' + ', '_').replace(' ', '_')}.csv", 
-            mime="text/csv"
-        )
-    
-    with col3:
-        st.download_button(
-            "📋 Download Tabel Lengkap (CSV)", 
-            data=df_growth.to_csv(index=False).encode('utf-8'),
-            file_name=f"Semua_Sektor_{freq_label.replace(' + ', '_').replace(' ', '_')}.csv", 
-            mime="text/csv"
-        )
-    
-    st.info("💡 File CSV dapat dibuka di Excel, Google Sheets, atau aplikasi spreadsheet lainnya.")
+        st.download_button("📈 Download Ranking 17 (CSV)", 
+                           data=df_growth.head(17).to_csv(index=False).encode('utf-8'),
+                           file_name=f"Ranking_17_{freq_label.replace(' + ', '_').replace(' ', '_')}.csv", mime="text/csv")
 
 # Footer dengan heart symbol ❤️
 st.caption("💡 Keep on Learning in deep heart with ❤️.")

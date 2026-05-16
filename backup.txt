@@ -1,8 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────
-# FILE: app.py (UPDATED: Height Control + PNG Export)
-# DEPENDENCIES: streamlit, pandas, numpy, plotly, requests, openpyxl, kaleido
-# INSTALL: pip install streamlit pandas numpy plotly requests openpyxl kaleido
-# RUN: streamlit run app.py
+# RUN: Bismillah
 # ─────────────────────────────────────────────────────────────────────
 
 import streamlit as st
@@ -12,15 +9,13 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 import requests
-from io import BytesIO, StringIO
+from io import BytesIO
 import re
-import base64
 
 st.set_page_config(page_title="📊 Dashboard PDB", layout="wide", page_icon="📈")
 
-# ─────────────────────────────────────────────────────────────────────
 # 1. LOAD DATA
-# ─────────────────────────────────────────────────────────────────────
+
 @st.cache_data(ttl=3600)
 def load_data_from_github(raw_url):
     try:
@@ -33,9 +28,7 @@ def load_data_from_github(raw_url):
         st.error(f"❌ Gagal memuat data: {e}")
         st.stop()
 
-# ─────────────────────────────────────────────────────────────────────
 # 2. FUNGSI PREPARASI DATA
-# ─────────────────────────────────────────────────────────────────────
 def prepare_data(df):
     all_cols = [c for c in df.columns[1:] if isinstance(c, (str, int))]
     q_cols = sorted([c for c in all_cols if re.match(r"^\d{4}_[1-4]$", str(c))], 
@@ -68,38 +61,16 @@ def calculate_growth_data(df, cols, selected_sectors):
         g_latest = (data[-1] - data[-2]) / data[-2] * 100
         g_series = pd.Series(data).pct_change().dropna() * 100
         growth_data.append({
-            "Sektor": sek, "Growth_Terkini_%": g_latest, "Nilai_Terkini_M": data[-1],
-            "Avg_Growth_%": g_series.mean(), "Volatility_σ": g_series.std()
+            "Sektor": sek, 
+            "Growth_Terkini_%": g_latest, 
+            "Nilai_Terkini_M": data[-1],
+            "Avg_Growth_%": g_series.mean(), 
+            "Volatility_σ": g_series.std(),
+            "Nilai_Awal_M": data[-2]
         })
     return pd.DataFrame(growth_data).sort_values("Growth_Terkini_%", ascending=False)
 
-# ─────────────────────────────────────────────────────────────────────
-# 3. FUNGSI EXPORT PNG (Menggunakan Kaleido)
-# ─────────────────────────────────────────────────────────────────────
-def export_fig_to_png(fig, filename="chart_export.png", width=1200, height=600, scale=2):
-    """
-    Export Plotly figure ke PNG bytes menggunakan kaleido
-    """
-    try:
-        # Update layout untuk export (opsional: adjust margin, font size)
-        fig_export = go.Figure(fig)  # Copy figure
-        fig_export.update_layout(
-            width=width,
-            height=height,
-            margin=dict(l=60, r=40, t=60, b=40),  # Margin lebih rapi untuk export
-            font=dict(size=11)
-        )
-        # Generate PNG bytes
-        img_bytes = fig_export.to_image(format="png", width=width, height=height, scale=scale)
-        return img_bytes
-    except Exception as e:
-        st.error(f"❌ Gagal export PNG: {e}")
-        st.info("💡 Pastikan kaleido terinstall: `pip install kaleido`")
-        return None
-
-# ─────────────────────────────────────────────────────────────────────
-# 4. SIDEBAR & KONTROL
-# ─────────────────────────────────────────────────────────────────────
+# 3. SIDEBAR & KONTROL
 st.title("📊 Dashboard Analisis PDB")
 st.caption("Eksplorasi real-time dataset PDB menurut Lapangan Usaha (ADHK)")
 
@@ -109,8 +80,8 @@ with st.sidebar:
     # 🔗 INPUT GITHUB RAW URL
     raw_url = st.text_input(
         "🔗 DATA URL",
-        value="https://raw.githubusercontent.com/username/repo/main/PDB_Seri2010.xlsx",
-        help="Gunakan URL 'raw' dari GitHub"
+        value="input data here",
+        help="Gunakan URL 'raw' "
     )
     if not raw_url or "raw" not in raw_url:
         st.warning("⚠️ Masukkan URL yang valid terlebih dahulu.")
@@ -139,29 +110,15 @@ with st.sidebar:
     # 🎚️ Threshold
     threshold = st.slider("🎯 Threshold (%)", 1.0, 20.0, 5.0)
     
-    # 📐 PENGATURAN TINGGI GRAFIK (FITUR BARU)
+    # 📐 PENGATURAN TINGGI & LEBAR GRAFIK (DIPERTAHANKAN)
     st.divider()
     st.subheader("📐 Pengaturan Visual")
     chart_height = st.slider("📏 Tinggi Grafik (pixel)", min_value=300, max_value=1200, value=600, step=50)
     chart_width = st.slider("📐 Lebar Grafik (pixel)", min_value=600, max_value=2000, value=1200, step=100)
-    export_scale = st.selectbox("🔍 Resolusi Export", options=[1, 2, 3], index=1, 
-                                help="1=Standar, 2=High-DPI, 3=Ultra-High")
-    
-    # 🖼️ TOMBOL EXPORT PNG (FITUR BARU)
-    st.divider()
-    st.subheader("📥 Export Chart")
-    export_filename = st.text_input("📁 Nama File", value="pdb_chart_export")
-    export_btn = st.button("🖼️ Generate PNG Preview", type="secondary")
 
-# ─────────────────────────────────────────────────────────────────────
-# 5. PROSES DATA & VISUALISASI
-# ─────────────────────────────────────────────────────────────────────
+# 4. PROSES DATA & VISUALISASI
 cols, freq_label = get_filtered_cols(df, selected_freqs, q_cols, y_cols)
 df_growth = calculate_growth_data(df, cols, selected_sectors)
-
-# Session state untuk menyimpan figure terakhir
-if "last_fig" not in st.session_state:
-    st.session_state.last_fig = None
 
 tabs = st.tabs(["📊 Visualisasi", "📋 Tabel Perubahan", "📥 Export Data"])
 
@@ -174,6 +131,7 @@ with tabs[0]:
         if df_top17.empty:
             st.warning("⚠️ Tidak cukup data untuk 17 sektor.")
         else:
+            # 📊 CHART BAR HORIZONTAL
             fig = go.Figure()
             fig.add_trace(go.Bar(
                 y=df_top17["Sektor"].apply(lambda x: x[:45]+"..." if len(x)>45 else x),
@@ -188,26 +146,63 @@ with tabs[0]:
                 xaxis_title="Pertumbuhan Periode Terakhir (%)",
                 yaxis=dict(autorange="reversed", title="Sektor"),
                 template="plotly_white", 
-                height=chart_height,  # ✅ DINAMIS SESUAI SLIDER
+                height=chart_height,
                 width=chart_width,
                 margin=dict(l=320, r=20, t=50, b=20), 
                 bargap=0.4, 
                 showlegend=False
             )
-            st.plotly_chart(fig, use_container_width=False)  # ✅ Non-aktifkan auto-width agar slider berfungsi
-            st.session_state.last_fig = fig  # Simpan untuk export
+            st.plotly_chart(fig, use_container_width=False)
             
-            # Statistik format pohon
-            st.markdown("### 📊 Ringkasan Statistik")
+            # 📋 TABEL RANKING 17 SEKTOR
+            st.markdown("### 📋 Tabel Ranking 17 Sektor - Perubahan Terbesar & Terkecil")
+            
+            # Siapkan data tabel dengan formatting
+            df_table = df_top17.copy()
+            df_table["Rank"] = range(1, len(df_table)+1)
+            df_table["Tren"] = df_table["Growth_Terkini_%"].apply(lambda x: "📈 Naik" if x >= 0 else "📉 Turun")
+            df_table["Perubahan_Absolut_M"] = df_table["Nilai_Terkini_M"] - df_table["Nilai_Awal_M"]
+            
+            # Format kolom untuk display
+            df_display = df_table[[
+                "Rank", "Sektor", "Tren", "Growth_Terkini_%", 
+                "Nilai_Awal_M", "Nilai_Terkini_M", "Perubahan_Absolut_M",
+                "Avg_Growth_%", "Volatility_σ"
+            ]].copy()
+            
+            # Formatting angka
+            df_display["Growth_Terkini_%"] = df_display["Growth_Terkini_%"].apply(lambda x: f"{x:+.2f}%")
+            df_display["Nilai_Awal_M"] = df_display["Nilai_Awal_M"].apply(lambda x: f"{x:,.0f}")
+            df_display["Nilai_Terkini_M"] = df_display["Nilai_Terkini_M"].apply(lambda x: f"{x:,.0f}")
+            df_display["Perubahan_Absolut_M"] = df_display["Perubahan_Absolut_M"].apply(lambda x: f"{x:+,.0f}")
+            df_display["Avg_Growth_%"] = df_display["Avg_Growth_%"].apply(lambda x: f"{x:+.2f}%")
+            df_display["Volatility_σ"] = df_display["Volatility_σ"].apply(lambda x: f"{x:.2f}%")
+            
+            # Rename kolom untuk display yang lebih jelas
+            df_display.columns = [
+                "🔢", "🏷️ Sektor", "📊 Tren", "📈 Growth (%)", 
+                "💰 Nilai Awal (M)", "💰 Nilai Akhir (M)", "🔄 Δ Absolut (M)",
+                "📊 Avg Growth", "⚡ Volatilitas"
+            ]
+            
+            # Tampilkan tabel dengan styling
+            st.dataframe(
+                df_display,
+                use_container_width=True,
+                height=500,
+                hide_index=True
+            )
+            
+            # 📜 STATISTIK FORMAT
+            st.markdown("### 📊 Ringkasan Statistik Detail")
             for _, row in df_top17.iterrows():
                 tren = "📈 Ekspansi" if row["Growth_Terkini_%"] >= 0 else "📉 Kontraksi"
-                st.text(f"🏷️  {row['Sektor'][:50]}{'...' if len(row['Sektor'])>50 else ''}")
-                st.text(f"   ├─ Nilai Terkini: Rp {row['Nilai_Terkini_M']:,.0f} M")
-                st.text(f"   ├─ Growth Terbaru: {row['Growth_Terkini_%']:+.2f}%")
-                st.text(f"   ├─ Rata-rata Growth: {row['Avg_Growth_%']:+.2f}%")
-                st.text(f"   ├─ Volatilitas (σ): {row['Volatility_σ']:.2f}%")
-                st.text(f"   └─ Tren: {tren}")
-                st.markdown("---")
+                with st.expander(f"🏷️ {row['Sektor'][:50]}{'...' if len(row['Sektor'])>50 else ''}"):
+                    st.text(f"   ├─ Nilai Terkini: Rp {row['Nilai_Terkini_M']:,.0f} M")
+                    st.text(f"   ├─ Growth Terbaru: {row['Growth_Terkini_%']:+.2f}%")
+                    st.text(f"   ├─ Rata-rata Growth: {row['Avg_Growth_%']:+.2f}%")
+                    st.text(f"   ├─ Volatilitas (σ): {row['Volatility_σ']:.2f}%")
+                    st.text(f"   └─ Tren: {tren}")
 
     # ─── VISUALISASI: TREN NILAI ────────────────────────────────────
     elif viz_type == "📈 Tren Nilai":
@@ -224,13 +219,12 @@ with tabs[0]:
             xaxis_title="Periode", 
             yaxis_title="Nilai (Miliar Rupiah)",
             template="plotly_white", 
-            height=chart_height,  # ✅ DINAMIS
+            height=chart_height,
             width=chart_width,
             hovermode="x unified", 
             xaxis_tickangle=-45
         )
         st.plotly_chart(fig, use_container_width=False)
-        st.session_state.last_fig = fig
 
     # ─── VISUALISASI: VOLATILITAS ───────────────────────────────────
     elif viz_type == "🔥 Volatilitas":
@@ -239,12 +233,11 @@ with tabs[0]:
                      title=f"🔥 15 Sektor Paling Volatil - {freq_label}", 
                      color="Volatility_σ", color_continuous_scale="RdYlGn_r")
         fig.update_layout(
-            height=chart_height,  # ✅ DINAMIS
+            height=chart_height,
             width=chart_width,
             yaxis={'categoryorder':'total ascending'}
         )
         st.plotly_chart(fig, use_container_width=False)
-        st.session_state.last_fig = fig
 
     # ─── VISUALISASI: KOMPARASI Q1-Q4 ───────────────────────────────
     elif viz_type == "📊 Komparasi Q1-Q4":
@@ -267,32 +260,27 @@ with tabs[0]:
                              labels={"Nilai_M": "Nilai (Miliar Rupiah)", "Sektor": "Sektor"},
                              color_discrete_sequence=px.colors.qualitative.Set2)
                 fig.update_layout(
-                    height=chart_height,  # ✅ DINAMIS
+                    height=chart_height,
                     width=chart_width,
                     xaxis_tickangle=-45, 
                     template="plotly_white"
                 )
                 st.plotly_chart(fig, use_container_width=False)
-                st.session_state.last_fig = fig
             else:
                 st.warning("⚠️ Data tidak tersedia untuk komparasi.")
 
     # ─── VISUALISASI: DETEKSI ANOMALI ───────────────────────────────
     elif viz_type == "🔍 Deteksi Anomali":
         st.info(f"🔍 Threshold: {threshold}%")
-        for sek in selected_sectors[:5]:  # Limit 5 sektor agar tidak terlalu panjang
+        for sek in selected_sectors[:5]:
             data = df.loc[df["Sektor"] == sek, cols].values.flatten()
             data = data[~np.isnan(data)]
             if len(data) < 10: continue
-            
-            # Z-Score sederhana
             z_scores = np.abs((data - np.mean(data)) / np.std(data))
             anomalies = np.where(z_scores > 2)[0]
-            
             status = "✅ Stabil" if len(anomalies) == 0 else f"⚠️ {len(anomalies)} anomali"
             st.markdown(f"**{sek[:50]}**: {status}")
         
-        # Plot contoh untuk 1 sektor
         if selected_sectors:
             sek = selected_sectors[0]
             data = df.loc[df["Sektor"] == sek, cols].values.flatten()
@@ -301,8 +289,6 @@ with tabs[0]:
             
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=periods, y=data, mode="lines+markers", name="Nilai"))
-            
-            # Highlight anomali
             if len(data) >= 10:
                 z = np.abs((data - np.mean(data)) / np.std(data))
                 anom_idx = np.where(z > 2)[0]
@@ -314,39 +300,13 @@ with tabs[0]:
                         name="⚠️ Anomali",
                         marker=dict(color="red", size=10, symbol="x")
                     ))
-            
             fig.update_layout(
                 title=f"🔍 Deteksi Anomali - {sek[:40]}",
-                height=chart_height,  # ✅ DINAMIS
+                height=chart_height,
                 width=chart_width,
                 template="plotly_white"
             )
             st.plotly_chart(fig, use_container_width=False)
-            st.session_state.last_fig = fig
-
-    # ─── TOMBOL EXPORT PNG ──────────────────────────────────────────
-    if export_btn and st.session_state.last_fig is not None:
-        with st.spinner("🔄 Generating PNG..."):
-            img_bytes = export_fig_to_png(
-                st.session_state.last_fig, 
-                filename=f"{export_filename}.png",
-                width=chart_width,
-                height=chart_height,
-                scale=export_scale
-            )
-            if img_bytes:
-                st.success("✅ PNG berhasil dibuat!")
-                # Preview kecil
-                st.image(img_bytes, caption=f"Preview: {export_filename}.png", width=400)
-                # Download button
-                st.download_button(
-                    label="📥 Download PNG",
-                    data=img_bytes,
-                    file_name=f"{export_filename}.png",
-                    mime="image/png"
-                )
-    elif export_btn and st.session_state.last_fig is None:
-        st.warning("⚠️ Buat visualisasi terlebih dahulu sebelum export.")
 
 with tabs[1]:
     st.subheader("📋 Tabel Perubahan Kuartalan/Tahunan")
@@ -381,5 +341,4 @@ with tabs[2]:
                            data=df_growth.head(17).to_csv(index=False).encode('utf-8'),
                            file_name=f"Ranking_17_{freq_label.replace(' + ', '_').replace(' ', '_')}.csv", mime="text/csv")
 
-# Footer dengan heart symbol ❤️
-st.caption("💡 Keep on Learning in deep heart with ❤️.")
+st.caption("💡 Keep on Learning in wwww.dataaksi.id with ❤️")

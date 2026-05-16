@@ -1,4 +1,10 @@
-# app.py
+# ─────────────────────────────────────────────────────────────────────
+# FILE: app.py (UPDATED)
+# FITUR: Multi-Quarter Selection + Heart Symbol ❤️
+# DEPENDENCIES: streamlit, pandas, numpy, plotly, requests, openpyxl
+# RUN: streamlit run app.py
+# ─────────────────────────────────────────────────────────────────────
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -14,7 +20,7 @@ st.set_page_config(page_title="📊 Dashboard PDB", layout="wide", page_icon="�
 # ─────────────────────────────────────────────────────────────────────
 # 1. LOAD DATA
 # ─────────────────────────────────────────────────────────────────────
-@st.cache_data(ttl=3600)  #
+@st.cache_data(ttl=3600)
 def load_data_from_github(raw_url):
     try:
         res = requests.get(raw_url, timeout=10)
@@ -37,12 +43,27 @@ def prepare_data(df):
     sektor_list = df["Sektor"].dropna().tolist()
     return df, q_cols, y_cols, sektor_list
 
-def get_filtered_cols(df, freq, q_cols, y_cols):
-    if freq == "📊 Tahunan":
+def get_filtered_cols(df, selected_freqs, q_cols, y_cols):
+    """
+    Filter kolom berdasarkan pilihan frekuensi (bisa multi-quarter)
+    Returns: (cols_list, label_string)
+    """
+    if "📊 Tahunan" in selected_freqs:
         return y_cols, "Tahunan"
-    q_num = int(freq.split()[-1])
-    cols = sorted([c for c in q_cols if str(c).endswith(f"_{q_num}")], key=lambda x: int(str(x).split('_')[0]))
-    return cols, f"Triwulan {q_num}"
+    
+    cols = []
+    labels = []
+    for freq in selected_freqs:
+        q_num = int(freq.split()[-1])
+        q_cols_filtered = sorted([c for c in q_cols if str(c).endswith(f"_{q_num}")], 
+                                  key=lambda x: int(str(x).split('_')[0]))
+        cols.extend(q_cols_filtered)
+        labels.append(f"Q{q_num}")
+    
+    # Urutkan kronologis
+    cols = sorted(cols, key=lambda x: (int(str(x).split('_')[0]), int(str(x).split('_')[1])))
+    label_str = " + ".join(labels) if len(labels) > 1 else labels[0] if labels else "Kuartal"
+    return cols, label_str
 
 def calculate_growth_data(df, cols, selected_sectors):
     growth_data = []
@@ -68,12 +89,12 @@ def detect_anomalies(df, cols, selected_sectors, method, threshold):
         anomalies = []
         if method == "Z-Score (±2σ)":
             z = np.abs((data - np.mean(data)) / np.std(data))
-            anomalies = data.index[z > threshold].tolist()
+            anomalies = np.where(z > threshold)[0].tolist()
         elif method == "IQR Method":
             Q1, Q3 = np.percentile(data, 25), np.percentile(data, 75)
             IQR = Q3 - Q1
             lower, upper = Q1 - threshold * IQR, Q3 + threshold * IQR
-            anomalies = data.index[(data < lower) | (data > upper)].tolist()
+            anomalies = np.where((data < lower) | (data > upper))[0].tolist()
         elif method == "Growth Spike":
             g = np.diff(data) / data[:-1] * 100
             anomalies = np.where(np.abs(g) > threshold)[0] + 1
@@ -94,7 +115,7 @@ with st.sidebar:
     raw_url = st.text_input(
         "🔗 DATA URL",
         value="https://raw.githubusercontent.com/username/repo/main/PDB_Seri2010.xlsx",
-        help="Gunakan URL 'raw' dari GitHub. 'raw'"
+        help="Gunakan URL 'raw' dari GitHub"
     )
     if not raw_url or "raw" not in raw_url:
         st.warning("⚠️ Masukkan URL yang valid terlebih dahulu.")
@@ -103,8 +124,23 @@ with st.sidebar:
     df = load_data_from_github(raw_url)
     df, q_cols, y_cols, sektor_list = prepare_data(df)
     
-    freq = st.selectbox("📅 Periode", ["Triwulan 1", "Triwulan 2", "Triwulan 3", "Triwulan 4", "📊 Tahunan"])
-    selected_sectors = st.multiselect("🏷️ Pilih Sektor", sektor_list, default=[sektor_list[0], sektor_list[1] if len(sektor_list)>1 else sektor_list[0]])
+    # ✅ MULTI-SELECT PERIODE KUARTAL + TAHUNAN
+    freq_options = ["Triwulan 1", "Triwulan 2", "Triwulan 3", "Triwulan 4", "📊 Tahunan"]
+    selected_freqs = st.multiselect(
+        "📅 Pilih Periode (Multi-Select)", 
+        freq_options, 
+        default=["Triwulan 1"]
+    )
+    
+    if not selected_freqs:
+        st.warning("⚠️ Pilih minimal satu periode.")
+        st.stop()
+    
+    selected_sectors = st.multiselect(
+        "🏷️ Pilih Sektor", 
+        sektor_list, 
+        default=[sektor_list[0], sektor_list[1] if len(sektor_list)>1 else sektor_list[0]]
+    )
     
     viz_type = st.selectbox("👁️ Jenis Visualisasi", [
         "📈 Tren Nilai", "🏆 Perubahan Terbesar (17)", "🔥 Volatilitas", 
@@ -115,7 +151,7 @@ with st.sidebar:
 # ─────────────────────────────────────────────────────────────────────
 # 4. PROSES DATA & VISUALISASI
 # ─────────────────────────────────────────────────────────────────────
-cols, freq_label = get_filtered_cols(df, freq, q_cols, y_cols)
+cols, freq_label = get_filtered_cols(df, selected_freqs, q_cols, y_cols)
 df_growth = calculate_growth_data(df, cols, selected_sectors)
 
 tabs = st.tabs(["📊 Visualisasi", "📋 Tabel Perubahan", "📥 Export"])
@@ -163,11 +199,18 @@ with tabs[0]:
         for i, sek in enumerate(selected_sectors):
             data = df.loc[df["Sektor"] == sek, cols].values.flatten()
             data = data[~np.isnan(data)]
-            periods = [str(c).replace('_', ' Q') if '_' in str(c) else str(c) for c in cols]
+            # Format periode: "2010 Q1", "2010 Q2", atau "2010" untuk tahunan
+            periods = []
+            for c in cols:
+                if '_' in str(c):
+                    year, q = str(c).split('_')
+                    periods.append(f"{year} Q{q}")
+                else:
+                    periods.append(str(c))
             fig.add_trace(go.Scatter(x=periods[:len(data)], y=data, mode="lines+markers",
                                      name=sek[:40]+"...", line=dict(color=colors[i%len(colors)], width=2.5)))
         fig.update_layout(title=f"📈 Tren Nilai - {freq_label}", xaxis_title="Periode", yaxis_title="Nilai (Miliar Rupiah)",
-                          template="plotly_white", height=500, hovermode="x unified")
+                          template="plotly_white", height=500, hovermode="x unified", xaxis_tickangle=-45)
         st.plotly_chart(fig, use_container_width=True)
 
     elif viz_type == "🔥 Volatilitas":
@@ -177,9 +220,37 @@ with tabs[0]:
         fig.update_layout(height=600, yaxis={'categoryorder':'total ascending'})
         st.plotly_chart(fig, use_container_width=True)
 
+    elif viz_type == "📊 Komparasi Q1-Q4":
+        # Grouped bar chart untuk membandingkan nilai antar kuartal dalam satu tahun
+        if "📊 Tahunan" in selected_freqs or len(selected_freqs) < 2:
+            st.info("💡 Pilih minimal 2 Triwulan (misal: Q1 + Q2 + Q3 + Q4) untuk komparasi.")
+        else:
+            # Ambil data untuk tahun terakhir yang tersedia
+            latest_year = max(int(str(c).split('_')[0]) for c in cols)
+            comp_data = []
+            for sek in selected_sectors[:10]:  # Max 10 sektor agar chart tidak padat
+                for c in cols:
+                    if str(c).startswith(f"{latest_year}_"):
+                        val = df.loc[df["Sektor"] == sek, c].values[0]
+                        if not pd.isna(val):
+                            q = str(c).split('_')[1]
+                            comp_data.append({"Sektor": sek[:35]+"..." if len(sek)>35 else sek, "Kuartal": f"Q{q}", "Nilai_M": val})
+            
+            if comp_data:
+                df_comp = pd.DataFrame(comp_data)
+                fig = px.bar(df_comp, x="Sektor", y="Nilai_M", color="Kuartal", barmode="group",
+                             title=f"📊 Komparasi Nilai per Kuartal - Tahun {latest_year}",
+                             labels={"Nilai_M": "Nilai (Miliar Rupiah)", "Sektor": "Sektor"},
+                             color_discrete_sequence=px.colors.qualitative.Set2)
+                fig.update_layout(height=550, xaxis_tickangle=-45, template="plotly_white")
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.warning("⚠️ Data tidak tersedia untuk komparasi tahun terakhir.")
+
     elif viz_type == "🔍 Deteksi Anomali":
-        anomaly_res = detect_anomalies(df, cols, selected_sectors, "IQR Method" if threshold > 2 else "Z-Score (±2σ)", threshold)
-        st.info(f"🔍 Metode: IQR/Z-Score | Threshold: {threshold}")
+        method = "IQR Method" if threshold > 2 else "Z-Score (±2σ)"
+        anomaly_res = detect_anomalies(df, cols, selected_sectors, method, threshold)
+        st.info(f"🔍 Metode: {method} | Threshold: {threshold}")
         for res in anomaly_res:
             if res["Anomalies"] > 0:
                 st.warning(f"⚠️ **{res['Sektor'][:50]}**: Terdeteksi `{res['Anomalies']}` periode anomali")
@@ -188,7 +259,6 @@ with tabs[0]:
 
 with tabs[1]:
     st.subheader("📋 Tabel Perubahan Kuartalan/Tahunan")
-    # Buat tabel perubahan periode-to-periode
     change_rows = []
     for sek in selected_sectors:
         data = df.loc[df["Sektor"] == sek, cols].values.flatten()
@@ -198,7 +268,7 @@ with tabs[1]:
             change_rows.append({
                 "Sektor": sek, "Periode_Dari": periods[i-1], "Periode_Ke": periods[i],
                 "Nilai_Awal_M": data[i-1], "Nilai_Akhir_M": data[i],
-                "Perubahan_%": ((data[i]-data[i-1])/data[i-1]*100)
+                "Perubahan_%": ((data[i]-data[i-1])/data[i-1]*100) if data[i-1] != 0 else 0
             })
     df_changes = pd.DataFrame(change_rows)
     if not df_changes.empty:
@@ -214,10 +284,11 @@ with tabs[2]:
     with col1:
         st.download_button("📊 Download Data Terpilih (CSV)", 
                            data=df.loc[df["Sektor"].isin(selected_sectors), ["Sektor"]+cols].to_csv(index=False).encode('utf-8'),
-                           file_name=f"PDB_{freq_label.replace(' ', '_')}_Export.csv", mime="text/csv")
+                           file_name=f"PDB_{freq_label.replace(' + ', '_').replace(' ', '_')}_Export.csv", mime="text/csv")
     with col2:
         st.download_button("📈 Download Ranking 17 (CSV)", 
                            data=df_growth.head(17).to_csv(index=False).encode('utf-8'),
-                           file_name=f"Ranking_17_{freq_label.replace(' ', '_')}.csv", mime="text/csv")
+                           file_name=f"Ranking_17_{freq_label.replace(' + ', '_').replace(' ', '_')}.csv", mime="text/csv")
 
-st.caption("💡 Keep on Learning in deep heart with Love.")
+# ✅ UPDATED CAPTION: "Love" → "❤️"
+st.caption("💡 Keep on Learning in deep heart with ❤️.")

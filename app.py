@@ -9,12 +9,12 @@ import requests
 from io import BytesIO
 import re
 
-st.set_page_config(page_title="📊 Dashboard PDB BPS - Seri 2010", layout="wide", page_icon="📈")
+st.set_page_config(page_title="📊 Dashboard PDB", layout="wide", page_icon="📈")
 
 # ─────────────────────────────────────────────────────────────────────
-# 1. LOAD DATA DARI GITHUB (DENGAN CACHE)
+# 1. LOAD DATA
 # ─────────────────────────────────────────────────────────────────────
-@st.cache_data(ttl=3600)  # Cache 1 jam
+@st.cache_data(ttl=3600)  #
 def load_data_from_github(raw_url):
     try:
         res = requests.get(raw_url, timeout=10)
@@ -84,7 +84,7 @@ def detect_anomalies(df, cols, selected_sectors, method, threshold):
 # ─────────────────────────────────────────────────────────────────────
 # 3. SIDEBAR & KONTROL
 # ─────────────────────────────────────────────────────────────────────
-st.title("📊 Dashboard Analisis PDB BPS - Seri 2010")
+st.title("📊 Dashboard Analisis PDB")
 st.caption("Eksplorasi real-time dataset PDB menurut Lapangan Usaha (ADHK)")
 
 with st.sidebar:
@@ -92,12 +92,12 @@ with st.sidebar:
     
     # 🔗 INPUT GITHUB RAW URL
     raw_url = st.text_input(
-        "🔗 GitHub Raw URL (Excel)",
+        "🔗 DATA URL",
         value="https://raw.githubusercontent.com/username/repo/main/PDB_Seri2010.xlsx",
-        help="Gunakan URL 'raw' dari GitHub. Contoh: https://github.com/.../blob/... -> ubah 'blob' jadi 'raw'"
+        help="Gunakan URL 'raw' dari GitHub. 'raw'"
     )
     if not raw_url or "raw" not in raw_url:
-        st.warning("⚠️ Masukkan GitHub Raw URL yang valid terlebih dahulu.")
+        st.warning("⚠️ Masukkan URL yang valid terlebih dahulu.")
         st.stop()
 
     df = load_data_from_github(raw_url)
@@ -220,4 +220,4 @@ with tabs[2]:
                            data=df_growth.head(17).to_csv(index=False).encode('utf-8'),
                            file_name=f"Ranking_17_{freq_label.replace(' ', '_')}.csv", mime="text/csv")
 
-st.caption("💡 Tips: Upload file Excel ke GitHub → Klik file → 'Raw' → Copy URL → Paste di sidebar.")
+st.caption("💡 Keep on Learning in deep heart with Love.")

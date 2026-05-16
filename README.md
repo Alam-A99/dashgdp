@@ -1,6 +1,6 @@
 
 
-# 📊 Dashboard Analisis PDB BPS - Seri 2010 (Streamlit + GitHub)
+# 📊 Dashboard Analisis PDB BPS - Seri 2010
 
 ## 📋 Deskripsi
 Dashboard interaktif berbasis **Streamlit** untuk mengeksplorasi dataset PDB menurut Lapangan Usaha (ADHK) Seri 2010. Aplikasi ini mengambil data langsung dari **GitHub Raw URL**, memungkinkan analisis real-time tanpa perlu mengunduh file lokal.

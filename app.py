@@ -1,8 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────
-# FILE: app.py (UPDATED: Table Ranking + No PNG Export)
-# DEPENDENCIES: streamlit, pandas, numpy, plotly, requests, openpyxl
-# INSTALL: pip install streamlit pandas numpy plotly requests openpyxl
-# RUN: streamlit run app.py
+# RUN: Bismillah
 # ─────────────────────────────────────────────────────────────────────
 
 import streamlit as st
@@ -17,9 +14,8 @@ import re
 
 st.set_page_config(page_title="📊 Dashboard PDB", layout="wide", page_icon="📈")
 
-# ─────────────────────────────────────────────────────────────────────
 # 1. LOAD DATA
-# ─────────────────────────────────────────────────────────────────────
+
 @st.cache_data(ttl=3600)
 def load_data_from_github(raw_url):
     try:
@@ -32,9 +28,7 @@ def load_data_from_github(raw_url):
         st.error(f"❌ Gagal memuat data: {e}")
         st.stop()
 
-# ─────────────────────────────────────────────────────────────────────
 # 2. FUNGSI PREPARASI DATA
-# ─────────────────────────────────────────────────────────────────────
 def prepare_data(df):
     all_cols = [c for c in df.columns[1:] if isinstance(c, (str, int))]
     q_cols = sorted([c for c in all_cols if re.match(r"^\d{4}_[1-4]$", str(c))], 
@@ -76,9 +70,7 @@ def calculate_growth_data(df, cols, selected_sectors):
         })
     return pd.DataFrame(growth_data).sort_values("Growth_Terkini_%", ascending=False)
 
-# ─────────────────────────────────────────────────────────────────────
 # 3. SIDEBAR & KONTROL
-# ─────────────────────────────────────────────────────────────────────
 st.title("📊 Dashboard Analisis PDB")
 st.caption("Eksplorasi real-time dataset PDB menurut Lapangan Usaha (ADHK)")
 
@@ -88,8 +80,8 @@ with st.sidebar:
     # 🔗 INPUT GITHUB RAW URL
     raw_url = st.text_input(
         "🔗 DATA URL",
-        value="https://raw.githubusercontent.com/username/repo/main/PDB_Seri2010.xlsx",
-        help="Gunakan URL 'raw' dari GitHub"
+        value="input data here",
+        help="Gunakan URL 'raw' "
     )
     if not raw_url or "raw" not in raw_url:
         st.warning("⚠️ Masukkan URL yang valid terlebih dahulu.")
@@ -124,9 +116,7 @@ with st.sidebar:
     chart_height = st.slider("📏 Tinggi Grafik (pixel)", min_value=300, max_value=1200, value=600, step=50)
     chart_width = st.slider("📐 Lebar Grafik (pixel)", min_value=600, max_value=2000, value=1200, step=100)
 
-# ─────────────────────────────────────────────────────────────────────
 # 4. PROSES DATA & VISUALISASI
-# ─────────────────────────────────────────────────────────────────────
 cols, freq_label = get_filtered_cols(df, selected_freqs, q_cols, y_cols)
 df_growth = calculate_growth_data(df, cols, selected_sectors)
 
@@ -164,7 +154,7 @@ with tabs[0]:
             )
             st.plotly_chart(fig, use_container_width=False)
             
-            # 📋 TABEL RANKING 17 SEKTOR (FITUR BARU)
+            # 📋 TABEL RANKING 17 SEKTOR
             st.markdown("### 📋 Tabel Ranking 17 Sektor - Perubahan Terbesar & Terkecil")
             
             # Siapkan data tabel dengan formatting
@@ -203,7 +193,7 @@ with tabs[0]:
                 hide_index=True
             )
             
-            # 📜 STATISTIK FORMAT POHON (DIPERTAHANKAN)
+            # 📜 STATISTIK FORMAT
             st.markdown("### 📊 Ringkasan Statistik Detail")
             for _, row in df_top17.iterrows():
                 tren = "📈 Ekspansi" if row["Growth_Terkini_%"] >= 0 else "📉 Kontraksi"
@@ -351,5 +341,4 @@ with tabs[2]:
                            data=df_growth.head(17).to_csv(index=False).encode('utf-8'),
                            file_name=f"Ranking_17_{freq_label.replace(' + ', '_').replace(' ', '_')}.csv", mime="text/csv")
 
-# Footer dengan heart symbol ❤️
-st.caption("💡 Keep on Learning in deep heart with ❤️.")
+st.caption("💡 Keep on Learning in wwww.dataaksi.id with ❤️")

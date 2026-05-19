@@ -80,7 +80,7 @@ with st.sidebar:
     # 🔗 INPUT GITHUB RAW URL
     raw_url = st.text_input(
         "🔗 DATA URL",
-        value="input data here",
+        value="input link here",
         help="Gunakan URL 'raw' "
     )
     if not raw_url or "raw" not in raw_url:

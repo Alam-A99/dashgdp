@@ -166,7 +166,7 @@ with st.sidebar:
 
     if data_source == "🎲 Data Dummy (Default)":
         df = generate_dummy_data()
-        st.success("✅ Menggunakan data (17 sektor")
+        st.success("✅ Menggunakan dataset (17 sektor)")
     else:
         raw_url = st.text_input(
             "🔗 DATA URL",

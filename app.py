@@ -30,7 +30,7 @@ def load_data_from_github(raw_url):
 
 @st.cache_data
 def generate_dummy_data():
-    """Bangun dataset dummy 17 sektor lapangan usaha (ADHK)."""
+    """dataset dummy 17 sektor lapangan usaha (ADHK)."""
     np.random.seed(42)
     sektor_list = [
         "A. Pertanian, Kehutanan, dan Perikanan",
@@ -166,7 +166,7 @@ with st.sidebar:
 
     if data_source == "🎲 Data Dummy (Default)":
         df = generate_dummy_data()
-        st.success("✅ Menggunakan data dummy (17 sektor, 2019–2024).")
+        st.success("✅ Menggunakan data (17 sektor")
     else:
         raw_url = st.text_input(
             "🔗 DATA URL",

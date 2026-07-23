@@ -28,6 +28,63 @@ def load_data_from_github(raw_url):
         st.error(f"❌ Gagal memuat data: {e}")
         st.stop()
 
+@st.cache_data
+def generate_dummy_data():
+    """Bangun dataset dummy 17 sektor lapangan usaha (ADHK) - kuartalan 2019-2024."""
+    np.random.seed(42)
+    sektor_list = [
+        "A. Pertanian, Kehutanan, dan Perikanan",
+        "B. Pertambangan dan Penggalian",
+        "C. Industri Pengolahan",
+        "D. Pengadaan Listrik dan Gas",
+        "E. Pengadaan Air, Pengelolaan Sampah",
+        "F. Konstruksi",
+        "G. Perdagangan Besar dan Eceran",
+        "H. Transportasi dan Pergudangan",
+        "I. Penyediaan Akomodasi dan Makan Minum",
+        "J. Informasi dan Komunikasi",
+        "K. Jasa Keuangan dan Asuransi",
+        "L. Real Estate",
+        "M,N. Jasa Perusahaan",
+        "O. Administrasi Pemerintahan",
+        "P. Jasa Pendidikan",
+        "Q. Jasa Kesehatan dan Kegiatan Sosial",
+        "R,S,T,U. Jasa Lainnya",
+    ]
+    years = list(range(2019, 2025))
+    q_cols = [f"{y}_{q}" for y in years for q in range(1, 5)]
+    y_cols = [str(y) for y in years]
+
+    base_levels = np.random.uniform(500, 8000, size=len(sektor_list))
+    annual_growth = np.random.uniform(-0.02, 0.09, size=len(sektor_list))  # laju tumbuh tahunan dasar
+    seasonal = np.array([0.98, 1.00, 1.01, 1.02])  # pola musiman kuartalan ringan
+
+    rows = []
+    for i, sek in enumerate(sektor_list):
+        row = {"Sektor": sek}
+        level = base_levels[i]
+        q_values = {}
+        for t, col in enumerate(q_cols):
+            year_idx = t // 4
+            q_idx = t % 4
+            # shock khusus 2020 (mensimulasikan efek pandemi) untuk sektor rentan
+            shock = 1.0
+            if "2020" in col and sek in ["I. Penyediaan Akomodasi dan Makan Minum", "H. Transportasi dan Pergudangan"]:
+                shock = 0.72
+            growth_factor = (1 + annual_growth[i]) ** (1/4)
+            noise = np.random.normal(1.0, 0.015)
+            level = level * growth_factor * seasonal[q_idx] * shock * noise
+            q_values[col] = round(level, 1)
+        row.update(q_values)
+        for y in years:
+            yq = [row[f"{y}_{q}"] for q in range(1, 5)]
+            row[str(y)] = round(sum(yq), 1)
+        rows.append(row)
+
+    df = pd.DataFrame(rows)
+    ordered_cols = ["Sektor"] + q_cols + y_cols
+    return df[ordered_cols]
+
 # 2. FUNGSI PREPARASI DATA
 def prepare_data(df):
     all_cols = [c for c in df.columns[1:] if isinstance(c, (str, int))]
@@ -70,24 +127,57 @@ def calculate_growth_data(df, cols, selected_sectors):
         })
     return pd.DataFrame(growth_data).sort_values("Growth_Terkini_%", ascending=False)
 
+def forecast_sector(data, n_forecast=4):
+    """Regresi linear sederhana atas data historis untuk proyeksi n periode ke depan,
+    plus interval keyakinan berbasis residual (±1.96 SE)."""
+    x = np.arange(len(data))
+    if len(data) < 3:
+        return None
+    coeffs = np.polyfit(x, data, 1)
+    trend = np.poly1d(coeffs)
+    residuals = data - trend(x)
+    se = np.std(residuals, ddof=2) if len(data) > 2 else np.std(residuals)
+    x_future = np.arange(len(data), len(data) + n_forecast)
+    y_future = trend(x_future)
+    ci = 1.96 * se
+    # R^2 sebagai indikator kekuatan tren
+    ss_res = np.sum(residuals ** 2)
+    ss_tot = np.sum((data - np.mean(data)) ** 2)
+    r2 = 1 - ss_res / ss_tot if ss_tot != 0 else 0
+    return {
+        "x_future": x_future, "y_future": y_future, "ci": ci,
+        "slope": coeffs[0], "r2": r2, "se": se
+    }
+
 # 3. SIDEBAR & KONTROL
 st.title("📊 Dashboard Analisis PDB")
 st.caption("Eksplorasi real-time dataset PDB menurut Lapangan Usaha (ADHK)")
 
 with st.sidebar:
     st.header("⚙️ Konfigurasi")
-    
-    # 🔗 INPUT GITHUB RAW URL
-    raw_url = st.text_input(
-        "🔗 DATA URL",
-        value="input link here",
-        help="Gunakan URL 'raw' "
-    )
-    if not raw_url or "raw" not in raw_url:
-        st.warning("⚠️ Masukkan URL yang valid terlebih dahulu.")
-        st.stop()
 
-    df = load_data_from_github(raw_url)
+    # 🎲 SUMBER DATA — dummy sebagai default agar dashboard langsung bisa dipakai
+    data_source = st.radio(
+        "🗂️ Sumber Data",
+        ["🎲 Data Dummy (Default)", "🔗 URL GitHub"],
+        index=0,
+        help="Data dummy memuat 17 sektor contoh agar dashboard bisa langsung dieksplorasi tanpa perlu URL."
+    )
+
+    if data_source == "🎲 Data Dummy (Default)":
+        df = generate_dummy_data()
+        st.success("✅ Menggunakan data dummy (17 sektor, 2019–2024).")
+    else:
+        raw_url = st.text_input(
+            "🔗 DATA URL",
+            value="input link here",
+            help="Gunakan URL 'raw' "
+        )
+        if not raw_url or "raw" not in raw_url:
+            st.warning("⚠️ Masukkan URL yang valid terlebih dahulu.")
+            st.stop()
+        df = load_data_from_github(raw_url)
+
     df, q_cols, y_cols, sektor_list = prepare_data(df)
     
     # 📅 Multi-Select Periode
@@ -120,7 +210,7 @@ with st.sidebar:
 cols, freq_label = get_filtered_cols(df, selected_freqs, q_cols, y_cols)
 df_growth = calculate_growth_data(df, cols, selected_sectors)
 
-tabs = st.tabs(["📊 Visualisasi", "📋 Tabel Perubahan", "📥 Export Data"])
+tabs = st.tabs(["📊 Visualisasi", "📋 Tabel Perubahan", "🔮 Prediksi & Indikator"])
 
 with tabs[0]:
     st.subheader(f"📈 Analisis: {viz_type} ({freq_label})")
@@ -329,16 +419,123 @@ with tabs[1]:
     else:
         st.info("Pilih minimal 1 sektor dengan data lengkap.")
 
+# ─── TAB BARU: PREDIKSI & INDIKATOR PROFESIONAL ──────────────────────
 with tabs[2]:
-    st.subheader("📥 Export Data")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.download_button("📊 Download Data Terpilih (CSV)", 
-                           data=df.loc[df["Sektor"].isin(selected_sectors), ["Sektor"]+cols].to_csv(index=False).encode('utf-8'),
-                           file_name=f"PDB_{freq_label.replace(' + ', '_').replace(' ', '_')}_Export.csv", mime="text/csv")
-    with col2:
-        st.download_button("📈 Download Ranking 17 (CSV)", 
-                           data=df_growth.head(17).to_csv(index=False).encode('utf-8'),
-                           file_name=f"Ranking_17_{freq_label.replace(' + ', '_').replace(' ', '_')}.csv", mime="text/csv")
+    st.subheader(f"🔮 Prediksi Tren & Indikator Profesional ({freq_label})")
+
+    n_forecast = st.slider("📆 Jumlah Periode Proyeksi ke Depan", 1, 8, 4)
+
+    if not selected_sectors:
+        st.info("Pilih minimal 1 sektor pada sidebar untuk melihat prediksi.")
+    else:
+        total_terkini = df.loc[df["Sektor"].isin(selected_sectors), cols[-1]].sum()
+
+        # ── Kartu indikator ringkas per sektor ──
+        st.markdown("### 📌 Indikator Ringkas")
+        n_show = min(len(selected_sectors), 4)
+        metric_cols = st.columns(n_show)
+        for i, sek in enumerate(selected_sectors[:n_show]):
+            data = df.loc[df["Sektor"] == sek, cols].values.flatten()
+            data = data[~np.isnan(data)]
+            if len(data) < 3:
+                continue
+            g_series = pd.Series(data).pct_change().dropna() * 100
+            momentum = g_series.iloc[-1] - g_series.mean()  # akselerasi vs rata-rata historis
+            share = data[-1] / total_terkini * 100 if total_terkini else 0
+            with metric_cols[i]:
+                st.metric(
+                    label=sek[:28] + ("..." if len(sek) > 28 else ""),
+                    value=f"{data[-1]:,.0f} M",
+                    delta=f"{g_series.iloc[-1]:+.2f}% growth"
+                )
+                st.caption(f"⚡ Momentum: {momentum:+.2f} pp · 🥧 Kontribusi: {share:.1f}%")
+
+        st.divider()
+
+        # ── Proyeksi tren linear per sektor ──
+        st.markdown("### 📈 Proyeksi Tren (Regresi Linear + Interval Keyakinan 95%)")
+        fig = go.Figure()
+        colors = px.colors.qualitative.Set2
+        forecast_summary = []
+        for i, sek in enumerate(selected_sectors):
+            data = df.loc[df["Sektor"] == sek, cols].values.flatten()
+            data = data[~np.isnan(data)]
+            if len(data) < 3:
+                continue
+            fc = forecast_sector(data, n_forecast)
+            if fc is None:
+                continue
+            periods_hist = list(range(len(data)))
+            color = colors[i % len(colors)]
+            label = sek[:35] + ("..." if len(sek) > 35 else "")
+
+            # historis
+            fig.add_trace(go.Scatter(
+                x=periods_hist, y=data, mode="lines+markers",
+                name=f"{label} (aktual)", line=dict(color=color, width=2.5)
+            ))
+            # proyeksi
+            fig.add_trace(go.Scatter(
+                x=list(fc["x_future"]), y=list(fc["y_future"]), mode="lines+markers",
+                name=f"{label} (proyeksi)", line=dict(color=color, width=2, dash="dash")
+            ))
+            # pita keyakinan
+            fig.add_trace(go.Scatter(
+                x=list(fc["x_future"]) + list(fc["x_future"])[::-1],
+                y=list(fc["y_future"] + fc["ci"]) + list(fc["y_future"] - fc["ci"])[::-1],
+                fill="toself", fillcolor=color, opacity=0.12,
+                line=dict(width=0), showlegend=False, hoverinfo="skip"
+            ))
+
+            arah = "📈 Naik" if fc["slope"] > 0 else "📉 Turun"
+            forecast_summary.append({
+                "Sektor": sek,
+                "Nilai_Terkini_M": data[-1],
+                f"Proyeksi_+{n_forecast}_Periode_M": fc["y_future"][-1],
+                "Slope_per_Periode_M": fc["slope"],
+                "Kekuatan_Tren_R²": fc["r2"],
+                "Arah": arah
+            })
+
+        fig.update_layout(
+            title="🔮 Proyeksi Nilai Sektor Terpilih",
+            xaxis_title="Indeks Periode (historis → proyeksi)",
+            yaxis_title="Nilai (Miliar Rupiah)",
+            template="plotly_white",
+            height=chart_height,
+            width=chart_width,
+            hovermode="x unified"
+        )
+        st.plotly_chart(fig, use_container_width=False)
+
+        # ── Tabel ringkasan proyeksi ──
+        if forecast_summary:
+            st.markdown("### 📋 Ringkasan Proyeksi & Kekuatan Tren")
+            df_fc = pd.DataFrame(forecast_summary)
+            df_fc_display = df_fc.copy()
+            df_fc_display["Nilai_Terkini_M"] = df_fc_display["Nilai_Terkini_M"].apply(lambda x: f"{x:,.0f}")
+            df_fc_display[f"Proyeksi_+{n_forecast}_Periode_M"] = df_fc_display[f"Proyeksi_+{n_forecast}_Periode_M"].apply(lambda x: f"{x:,.0f}")
+            df_fc_display["Slope_per_Periode_M"] = df_fc_display["Slope_per_Periode_M"].apply(lambda x: f"{x:+,.1f}")
+            df_fc_display["Kekuatan_Tren_R²"] = df_fc_display["Kekuatan_Tren_R²"].apply(lambda x: f"{x:.2f}")
+            st.dataframe(df_fc_display, use_container_width=True, hide_index=True)
+            st.caption("💡 R² mendekati 1 menandakan tren historis konsisten/kuat sehingga proyeksi lebih andal; R² rendah menandakan pergerakan sektor lebih fluktuatif.")
+
+        st.divider()
+
+        # ── Indikator konsentrasi sektor (HHI) ──
+        st.markdown("### 🥧 Indikator Konsentrasi Ekonomi (Herfindahl-Hirschman Index)")
+        shares = df.loc[df["Sektor"].isin(selected_sectors), cols[-1]]
+        shares_pct = shares / shares.sum() * 100 if shares.sum() else shares
+        hhi = np.sum(shares_pct ** 2)
+        if hhi < 1500:
+            hhi_label = "🟢 Terdiversifikasi"
+        elif hhi < 2500:
+            hhi_label = "🟡 Konsentrasi Sedang"
+        else:
+            hhi_label = "🔴 Terkonsentrasi Tinggi"
+        c1, c2 = st.columns(2)
+        c1.metric("HHI (Sektor Terpilih)", f"{hhi:,.0f}", hhi_label)
+        c2.metric("Jumlah Sektor Dianalisis", f"{len(selected_sectors)}")
+        st.caption("💡 HHI dihitung dari pangsa nilai sektor terpilih pada periode terakhir (skala 0–10.000). Semakin tinggi nilainya, semakin terkonsentrasi struktur ekonominya pada sedikit sektor.")
 
 st.caption("💡 Keep on Learning in wwww.dataaksi.id with ❤️")

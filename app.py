@@ -30,7 +30,7 @@ def load_data_from_github(raw_url):
 
 @st.cache_data
 def generate_dummy_data():
-    """Bangun dataset dummy 17 sektor lapangan usaha (ADHK) - kuartalan 2019-2024."""
+    """Bangun dataset dummy 17 sektor lapangan usaha (ADHK)."""
     np.random.seed(42)
     sektor_list = [
         "A. Pertanian, Kehutanan, dan Perikanan",

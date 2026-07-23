@@ -159,14 +159,14 @@ with st.sidebar:
     # 🎲 SUMBER DATA — dummy sebagai default agar dashboard langsung bisa dipakai
     data_source = st.radio(
         "🗂️ Sumber Data",
-        ["🎲 Data Dummy (Default)", "🔗 URL GitHub"],
+        ["🎲 Dataset (Default)", "🔗 URL GitHub"],
         index=0,
         help="Data dummy memuat 17 sektor contoh agar dashboard bisa langsung dieksplorasi tanpa perlu URL."
     )
 
-    if data_source == "🎲 Data Dummy (Default)":
+    if data_source == "🎲 Dataset (Default)":
         df = generate_dummy_data()
-        st.success("✅ Menggunakan dataset (17 sektor)")
+        st.success("✅ Menggunakan data (17 sektor)")
     else:
         raw_url = st.text_input(
             "🔗 DATA URL",
